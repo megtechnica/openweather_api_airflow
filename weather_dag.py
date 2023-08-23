@@ -6,6 +6,17 @@ from airflow.providers.http.operators.http import SimpleHttpOperator
 from airflow.operators.python import PythonOperator
 import pandas as pd
 
+default_args = {
+    'owner': 'airflow',
+    'depends_on_past': False,
+    'start_date': datetime(2023, 1, 8),
+    'email': ['myemail@domain.com'],
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'retries': 2,
+    'retry_delay': timedelta(minutes=2)
+}
+
 
 
 
@@ -51,38 +62,23 @@ def transform_load_data(task_instance):
     dt_string = 'current_weather_data_portland_' + dt_string
     df_data.to_csv(f"s3://weatherapiairflowyoutubebucket-yml/{dt_string}.csv", index=False, storage_options=aws_credentials)
 
-
-
-default_args = {
-    'owner': 'airflow',
-    'depends_on_past': False,
-    'start_date': datetime(2023, 1, 8),
-    'email': ['myemail@domain.com'],
-    'email_on_failure': False,
-    'email_on_retry': False,
-    'retries': 2,
-    'retry_delay': timedelta(minutes=2)
-}
-
-
-
 with DAG('weather_dag',
         default_args=default_args,
         schedule_interval = '@daily',
         catchup=False) as dag:
 
 
-        is_weather_api_ready = HttpSensor(
-        task_id ='is_weather_api_ready',
-        http_conn_id='weathermap_api',
-        endpoint='/data/2.5/weather?q=Portland&APPID=5031cde3d1a8b9469fd47e998d7aef79'
+        weather_api_ready = HttpSensor(
+        task_id ='weather_api_ready',
+        http_conn_id='open_weather_api',
+        endpoint='/data/2.5/weather?q=Denver&APPID=5031cde3d1a8b9469fd47e998d7aef79'
         )
 
 
         extract_weather_data = SimpleHttpOperator(
         task_id = 'extract_weather_data',
-        http_conn_id = 'weathermap_api',
-        endpoint='/data/2.5/weather?q=Portland&APPID=5031cde3d1a8b9469fd47e998d7aef79',
+        http_conn_id = 'open_weather_api',
+        endpoint='/data/2.5/weather?q=Denver&APPID=5031cde3d1a8b9469fd47e998d7aef79',
         method = 'GET',
         response_filter= lambda r: json.loads(r.text),
         log_response=True
@@ -93,7 +89,4 @@ with DAG('weather_dag',
         python_callable=transform_load_data
         )
 
-
-
-
-        is_weather_api_ready >> extract_weather_data >> transform_load_weather_data
+        weather_api_ready >> extract_weather_data >> transform_load_weather_data
